@@ -87,8 +87,8 @@ input[type=checkbox]{width:22px;height:22px}
       <div class="v"><input type="range" id="sens" min="1" max="10" step="1"><span class="val" id="sensV"></span></div>
     </div>
     <div class="row">
-      <div class="k">速度<small>每分钟走多少行</small></div>
-      <div class="v"><input type="range" id="lpm" min="4" max="60" step="1"><span class="val" id="lpmV"></span></div>
+      <div class="k">速度<small>你每分钟大约读多少字（口播一般 250–320）</small></div>
+      <div class="v"><input type="range" id="cpm" min="100" max="600" step="10"><span class="val" id="cpmV"></span></div>
     </div>
     <div class="row">
       <div class="k">字号</div>
@@ -159,7 +159,7 @@ input[type=checkbox]{width:22px;height:22px}
 'use strict';
 var $=function(id){return document.getElementById(id)};
 var KEY='tp.v1';
-var D={script:'',font:60,lpm:20,marker:35,mirror:true,rot:0,mode:'manual',sens:6,clean:true,cd:true};
+var D={script:'',font:60,cpm:300,marker:35,mirror:true,rot:0,mode:'manual',sens:6,clean:true,cd:true};
 var S={},k;
 for(k in D)S[k]=D[k];
 try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);for(k in o)if(k in D)S[k]=o[k]}}catch(e){}
@@ -177,7 +177,7 @@ function bind(id,key,kind){
   else if(kind==='num'){el.value=String(S[key]);el.addEventListener('input',function(){S[key]=Number(el.value);save();sync()})}
   else{el.value=S[key];el.addEventListener('input',function(){S[key]=el.value;save();sync()})}
 }
-bind('mode','mode','str');bind('sens','sens','num');bind('lpm','lpm','num');bind('font','font','num');
+bind('mode','mode','str');bind('sens','sens','num');bind('cpm','cpm','num');bind('font','font','num');
 bind('marker','marker','num');bind('mirror','mirror','check');bind('rot','rot','num');bind('cd','cd','check');bind('clean','clean','check');
 scriptEl.value=S.script;
 var saveT=0;
@@ -185,7 +185,7 @@ scriptEl.addEventListener('input',function(){S.script=scriptEl.value;clearTimeou
 
 function sync(){
   $('sensV').textContent=S.sens;
-  $('lpmV').textContent=S.lpm+' 行';
+  $('cpmV').textContent=S.cpm+' 字/分';
   $('fontV').textContent=S.font+'px';
   $('markerV').textContent=S.marker+'%';
   $('rowSens').style.display=S.mode==='voice'?'flex':'none';
@@ -193,7 +193,7 @@ function sync(){
   $('modeHint').textContent=S.mode==='voice'?'开口说话就往下走，停下来就停。第一次要允许麦克风':'';
   var n=scriptEl.value.replace(/\s/g,'').length;
   $('count').textContent=n?('共 '+n+' 字'):'还没有稿子';
-  spdEl.textContent=S.lpm;
+  spdEl.textContent=S.cpm;
   bCal.style.display=voiceOn()||(stageOn&&S.mode==='voice')?'':'none';
   if(stageOn)layout(true);
 }
@@ -210,21 +210,27 @@ function cleanMd(t){
   t=t.replace(/\*\*|__|~~|`/g,'').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1$2');
   return t;
 }
+function countChars(s){
+  var cjk=(s.match(/[㐀-鿿]/g)||[]).length;
+  var lat=(s.match(/[A-Za-z0-9]+/g)||[]).length;
+  return cjk+lat*2;
+}
 function build(){
   var src=scriptEl.value.replace(/\r\n?/g,'\n');
   if(S.clean)src=cleanMd(src);
   text.innerHTML='';
+  textChars=0;
   var lines=src.split('\n'),prevEmpty=true,n=0;
   for(var i=0;i<lines.length;i++){
     var l=lines[i].trim();
     if(!l){if(!prevEmpty){var sp=document.createElement('p');sp.className='sp';text.appendChild(sp)}prevEmpty=true;continue}
-    var p=document.createElement('p');p.textContent=l;text.appendChild(p);prevEmpty=false;n++;
+    var p=document.createElement('p');p.textContent=l;text.appendChild(p);prevEmpty=false;n++;textChars+=countChars(l);
   }
   return n;
 }
 
 /* ---------- 引擎 ---------- */
-var stageOn=false,pos=0,maxPos=0,playing=false,gate=0,lastT=0,raf=0,lineH=96,markerY=0,cdTimer=null,hudT=0,toastT=0,lastPct=-1;
+var textChars=0,pxPerChar=8,stageOn=false,pos=0,maxPos=0,playing=false,gate=0,lastT=0,raf=0,lineH=96,markerY=0,cdTimer=null,hudT=0,toastT=0,lastPct=-1;
 
 function layout(keepRatio){
   var W=window.innerWidth,H=window.innerHeight;
@@ -244,6 +250,7 @@ function layout(keepRatio){
   fadeTop.style.height=padTop+'px';
   var C=text.offsetHeight-padTop-h;
   maxPos=Math.max(0,C-lineH);
+  pxPerChar=textChars>0?Math.max(0.5,C/textChars):lineH/10;
   if(ratio!==null)pos=ratio*maxPos;
   pos=clamp(pos,0,maxPos);
   updateMeterTick();
@@ -288,7 +295,7 @@ function pause(){
 function toggle(){(playing||cdTimer)?pause():play()}
 function restart(){pause();pos=0;render()}
 function jump(n){pos=clamp(pos+n*lineH,0,maxPos);render()}
-function setLpm(v){S.lpm=clamp(Math.round(v),4,60);$('lpm').value=String(S.lpm);save();spdEl.textContent=S.lpm;$('lpmV').textContent=S.lpm+' 行';showHud()}
+function setCpm(v){S.cpm=clamp(Math.round(v/10)*10,100,600);$('cpm').value=String(S.cpm);save();spdEl.textContent=S.cpm;$('cpmV').textContent=S.cpm+' 字/分';showHud()}
 function setFont(v){S.font=clamp(Math.round(v),28,140);$('font').value=String(S.font);save();$('fontV').textContent=S.font+'px';layout(true);showHud()}
 
 /* 控制条显隐 */
@@ -303,9 +310,9 @@ function toggleHud(){
 }
 
 /* ---------- 声控 ---------- */
-var lastTxt=0,ctx=null,analyser=null,stream=null,buf=null,micOK=false,calibrating=false,calStart=0,calSamples=[],noise=0.004,lvl=0,speaking=false,lastVoice=0,HOLD=700;
+var lastTxt=0,ctx=null,analyser=null,stream=null,buf=null,micOK=false,calibrating=false,calStart=0,calSamples=[],noise=0.004,lvl=0,speaking=false,lastVoice=0,HOLD=800;
 function voiceOn(){return S.mode==='voice'&&micOK}
-function thr(){return Math.max(0.01,noise*(3.2-(S.sens-1)*0.2)+0.004)}
+function thr(){return Math.max(0.006,noise*(2.8-(S.sens-1)*0.16)+0.002)}
 function updateMeterTick(){meterTick.style.left='25%'}
 function startCalib(){calibrating=true;calStart=performance.now();calSamples=[];toast('校准环境音…先别说话',1500)}
 function prepCtx(){
@@ -346,7 +353,7 @@ function analyse(now){
   var sum=0,i,v;
   for(i=0;i<buf.length;i++){v=(buf[i]-128)/128;sum+=v*v}
   var rms=Math.sqrt(sum/buf.length);
-  lvl=lvl*0.6+rms*0.4;
+  lvl=rms>lvl?lvl*0.3+rms*0.7:lvl*0.9+rms*0.1;
   if(calibrating){
     calSamples.push(rms);
     if(now-calStart>1300){
@@ -357,8 +364,10 @@ function analyse(now){
       toast('听着呢，开口就走',1800);
     }
   }else{
-    if(lvl>thr())lastVoice=now;
+    var th=thr();
+    if(lvl>th||(speaking&&lvl>th*0.6))lastVoice=now;
     speaking=(now-lastVoice)<HOLD;
+    if(!speaking&&lvl<noise)noise=noise*0.99+lvl*0.01;
   }
   meterFill.style.width=clamp(lvl/(thr()*4)*100,0,100)+'%';
   if(now-lastTxt>150){lastTxt=now;mtxtEl.textContent='音量 '+Math.round(lvl*1000)+' / 门槛 '+Math.round(thr()*1000)+(calibrating?' 校准中':(speaking?' 听到':' 静音'))+(playing?' 走':' 停')}
@@ -375,7 +384,7 @@ function frame(t){
   gate+=(target-gate)*Math.min(1,dt/0.2);
   if(Math.abs(target-gate)<0.01)gate=target;
   if(playing){
-    pos+=S.lpm/60*lineH*dt*(voiceOn()?gate:1);
+    pos+=S.cpm/60*pxPerChar*dt*(voiceOn()?gate:1);
     if(pos>=maxPos){pos=maxPos;playing=false;setPlayUI();toast('到底了',2200)}
   }
   render();
@@ -429,8 +438,8 @@ $('go').addEventListener('click',startStage);
 $('bExit').addEventListener('click',exitStage);
 $('bRestart').addEventListener('click',restart);
 $('bPlay').addEventListener('click',toggle);
-$('bSlow').addEventListener('click',function(){setLpm(S.lpm-2)});
-$('bFast').addEventListener('click',function(){setLpm(S.lpm+2)});
+$('bSlow').addEventListener('click',function(){setCpm(S.cpm-20)});
+$('bFast').addEventListener('click',function(){setCpm(S.cpm+20)});
 $('bSmall').addEventListener('click',function(){setFont(S.font-6)});
 $('bBig').addEventListener('click',function(){setFont(S.font+6)});
 $('bCal').addEventListener('click',function(){if(micOK)startCalib();else toast('麦克风没开，没法校准',1800)});
@@ -459,8 +468,8 @@ document.addEventListener('keydown',function(e){
   if(!stageOn)return;
   var key=e.key;
   if(key===' '||key==='Enter'){toggle();e.preventDefault()}
-  else if(key==='ArrowUp'){setLpm(S.lpm+2);e.preventDefault()}
-  else if(key==='ArrowDown'){setLpm(S.lpm-2);e.preventDefault()}
+  else if(key==='ArrowUp'){setCpm(S.cpm+20);e.preventDefault()}
+  else if(key==='ArrowDown'){setCpm(S.cpm-20);e.preventDefault()}
   else if(key==='ArrowRight'||key==='PageDown'){jump(3);e.preventDefault()}
   else if(key==='ArrowLeft'||key==='PageUp'){jump(-3);e.preventDefault()}
   else if(key==='Home'){restart();e.preventDefault()}
