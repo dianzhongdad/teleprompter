@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="提词器">
+<meta name="theme-color" content="#000000">
+<title>提词器</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:#000;color:#fff;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;-webkit-text-size-adjust:100%}
+
+/* ---------- 设置页 ---------- */
+#setup{max-width:720px;margin:0 auto;padding:16px 16px 48px}
+#setup h1{font-size:22px;margin:4px 0 14px}
+.card{background:#1c1c1e;border-radius:14px;padding:14px;margin-bottom:12px}
+.card label.t{display:block;font-size:13px;color:#8e8e93;margin-bottom:6px}
+textarea#script{width:100%;min-height:240px;height:38vh;background:#000;color:#fff;border:1px solid #3a3a3c;border-radius:10px;padding:10px;font-size:16px;line-height:1.5;font-family:inherit;resize:vertical}
+.count{font-size:12px;color:#8e8e93;margin-top:6px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-top:1px solid #2c2c2e}
+.row:first-child{border-top:0}
+.row .k{font-size:15px}
+.row .k small{display:block;color:#8e8e93;font-size:12px;margin-top:2px}
+.row .v{display:flex;align-items:center;gap:10px;min-width:0}
+.row input[type=range]{width:150px}
+.row .val{min-width:56px;text-align:right;color:#ffd54a;font-variant-numeric:tabular-nums;font-size:14px}
+select{background:#2c2c2e;color:#fff;border:0;border-radius:8px;padding:8px 10px;font-size:15px}
+input[type=checkbox]{width:22px;height:22px}
+#go{width:100%;height:54px;border:0;border-radius:14px;background:#ffd54a;color:#000;font-size:19px;font-weight:700;margin-top:4px}
+.tip{font-size:12px;color:#8e8e93;line-height:1.6;margin-top:10px}
+
+/* ---------- 提词画面 ---------- */
+#stage{position:fixed;left:0;top:0;right:0;bottom:0;background:#000;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+#rotbox{position:absolute;left:0;top:0;transform-origin:0 0}
+#vp{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden}
+#flip{position:absolute;left:0;top:0;width:100%}
+#flip.m{transform:scaleX(-1)}
+#text{padding-left:5%;padding-right:5%;font-weight:600;line-height:1.6;color:#fff;will-change:transform;word-break:break-word}
+#text p{margin:0 0 .5em}
+#text p.sp{height:.6em;margin:0}
+#band{position:absolute;left:0;right:0;pointer-events:none;background:rgba(255,213,74,.10);border-top:1px solid rgba(255,213,74,.4);border-bottom:1px solid rgba(255,213,74,.4)}
+#fadeTop{position:absolute;left:0;right:0;top:0;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.78),rgba(0,0,0,.45))}
+#prog{position:absolute;right:0;top:0;bottom:0;width:3px;background:#1c1c1e}
+#prog i{display:block;width:100%;height:0;background:#ffd54a}
+#cdbox{position:absolute;left:0;right:0;top:0;bottom:0;display:none;align-items:center;justify-content:center;font-size:30vmin;font-weight:800;color:#ffd54a;background:rgba(0,0,0,.55);pointer-events:none}
+#toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(44,44,46,.95);color:#fff;font-size:15px;padding:9px 16px;border-radius:20px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%;text-align:center}
+#toast.on{opacity:1}
+#meter{position:absolute;right:12px;top:10px;width:96px;height:8px;background:#2c2c2e;border-radius:4px;overflow:hidden;display:none}
+#meter i{display:block;height:100%;width:0;background:#8e8e93}
+#meter.talk i{background:#30d158}
+#meter b{position:absolute;top:0;bottom:0;width:2px;background:#ffd54a}
+#hud{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;padding:10px 12px;background:rgba(28,28,30,.94);transition:opacity .25s,transform .25s}
+#hud.off{opacity:0;pointer-events:none;transform:translateY(100%)}
+.b{min-width:44px;height:44px;border:0;border-radius:12px;background:#3a3a3c;color:#fff;font-size:16px;padding:0 12px}
+.b:active{background:#555}
+.b.main{background:#ffd54a;color:#000;font-weight:700;min-width:96px}
+.grp{display:flex;align-items:center;gap:6px}
+.lab{font-size:13px;color:#aeaeb2;min-width:44px;text-align:center}
+.lab b{color:#ffd54a;font-size:15px}
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <h1>提词器</h1>
+
+  <div class="card">
+    <label class="t" for="script">稿子（直接把 Obsidian 里的稿子粘进来）</label>
+    <textarea id="script" placeholder="在这里粘贴稿子…"></textarea>
+    <div class="count" id="count"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div class="k">滚动方式<small id="modeHint"></small></div>
+      <div class="v"><select id="mode">
+        <option value="manual">手动（按开始就匀速走）</option>
+        <option value="voice">声控（开口就走，停嘴就停）</option>
+      </select></div>
+    </div>
+    <div class="row" id="rowSens">
+      <div class="k">声控灵敏度<small>越高越容易被小声触发</small></div>
+      <div class="v"><input type="range" id="sens" min="1" max="10" step="1"><span class="val" id="sensV"></span></div>
+    </div>
+    <div class="row">
+      <div class="k">速度<small>每分钟走多少行</small></div>
+      <div class="v"><input type="range" id="lpm" min="4" max="60" step="1"><span class="val" id="lpmV"></span></div>
+    </div>
+    <div class="row">
+      <div class="k">字号</div>
+      <div class="v"><input type="range" id="font" min="28" max="140" step="2"><span class="val" id="fontV"></span></div>
+    </div>
+    <div class="row">
+      <div class="k">阅读线位置<small>离镜头越近越好，一般放上半部</small></div>
+      <div class="v"><input type="range" id="marker" min="15" max="60" step="1"><span class="val" id="markerV"></span></div>
+    </div>
+    <div class="row">
+      <div class="k">左右镜像<small>放在提词器玻璃下面要打开</small></div>
+      <div class="v"><input type="checkbox" id="mirror"></div>
+    </div>
+    <div class="row">
+      <div class="k">画面旋转<small>手机锁了方向、横不过来时用</small></div>
+      <div class="v"><select id="rot">
+        <option value="0">不旋转</option>
+        <option value="90">顺时针转 90°</option>
+        <option value="270">逆时针转 90°</option>
+      </select></div>
+    </div>
+    <div class="row" id="rowCd">
+      <div class="k">开始前倒数 3 秒<small>只对手动模式、从头开始时生效</small></div>
+      <div class="v"><input type="checkbox" id="cd"></div>
+    </div>
+    <div class="row">
+      <div class="k">清掉 Markdown 标记<small>去掉头部属性、&lt;!-- 注释 --&gt;、# 号、** 号、双链括号</small></div>
+      <div class="v"><input type="checkbox" id="clean"></div>
+    </div>
+  </div>
+
+  <button id="go">开始</button>
+  <div class="tip">
+    提词画面里：点一下屏幕 = 显示 / 隐藏控制条；手指上下拖 = 手动翻页。<br>
+    蓝牙键盘 / 翻页笔：空格 或 回车 = 开始 / 暂停，↑↓ = 调速，←→ 或 PageUp/PageDown = 跳 3 行，Home = 回开头，Esc = 退出。<br>
+    声控模式需要允许麦克风，且网页地址必须是 https。
+  </div>
+</div>
+
+<div id="stage" hidden>
+  <div id="rotbox">
+    <div id="vp">
+      <div id="flip"><div id="text"></div></div>
+      <div id="fadeTop"></div>
+      <div id="band"></div>
+      <div id="prog"><i></i></div>
+    </div>
+    <div id="cdbox"></div>
+    <div id="toast"></div>
+    <div id="meter"><i></i><b></b></div>
+    <div id="hud">
+      <button class="b" id="bExit">✕ 退出</button>
+      <button class="b" id="bRestart">⏮</button>
+      <span class="grp"><button class="b" id="bSlow">−</button><span class="lab">速度 <b id="spd">20</b></span><button class="b" id="bFast">＋</button></span>
+      <button class="b main" id="bPlay">▶ 开始</button>
+      <span class="grp"><button class="b" id="bSmall">A−</button><span class="lab">字号</span><button class="b" id="bBig">A＋</button></span>
+      <button class="b" id="bCal">🎙 校准</button>
+      <span class="lab" id="pct">0%</span>
+    </div>
+  </div>
+</div>
+
+<video id="nosleep" muted playsinline loop style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:.01;pointer-events:none" src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAANMbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAnZ0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAEAAAABAAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAAAAAAABAAAAAAHubWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAoAAAAUABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABmW1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAVlzdGJsAAAAuXN0c2QAAAAAAAAAAQAAAKlhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAEAAQABIAAAASAAAAAAAAAABFUxhdmM2Mi4yOC4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAAL2F2Y0MBQsAe/+EAF2dCwB7ZBCbARAAAAwAEAAADACg8WLkgAQAFaMuDyyAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAALqAAAAAAAAAAYc3R0cwAAAAAAAAABAAAACgAACAAAAAAUc3RzcwAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAACgAAAAEAAAA8c3RzegAAAAAAAAAAAAAACgAAAo8AAAAKAAAACwAAAAoAAAAKAAAACgAAAAoAAAAKAAAACgAAAAoAAAAUc3RjbwAAAAAAAAABAAADfAAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjIuMTIuMTAyAAAACGZyZWUAAALybWRhdAAAAnAGBf//bNxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjUgcjMyMjIgYjM1NjA1YSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjUgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0wIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDE6MHgxMTEgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0yIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTUgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAXZYiEBHyYoAA2IycnJ1111111111114AAAAAGQZo4CPhGAAAAB0GaVAI+EYAAAAAGQZpgEfCMAAAABkGagBHwjAAAAAZBmqAR8IwAAAAGQZrAEfCMAAAABkGa4BHwjAAAAAZBmwAQ8IwAAAAGQZsgP8Iw"></video>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+var KEY='tp.v1';
+var D={script:'',font:60,lpm:20,marker:35,mirror:true,rot:0,mode:'manual',sens:6,clean:true,cd:true};
+var S={},k;
+for(k in D)S[k]=D[k];
+try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);for(k in o)if(k in D)S[k]=o[k]}}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function clamp(v,a,b){return v<a?a:(v>b?b:v)}
+
+var setup=$('setup'),stage=$('stage'),rotEl=$('rotbox'),vp=$('vp'),flip=$('flip'),text=$('text'),band=$('band'),fadeTop=$('fadeTop'),
+    prog=$('prog').firstChild,cdEl=$('cdbox'),toastEl=$('toast'),meterEl=$('meter'),meterFill=meterEl.firstChild,meterTick=meterEl.lastChild,
+    hud=$('hud'),bPlay=$('bPlay'),bCal=$('bCal'),pctEl=$('pct'),spdEl=$('spd'),nosleep=$('nosleep'),scriptEl=$('script');
+
+/* ---------- 设置页绑定 ---------- */
+function bind(id,key,kind){
+  var el=$(id);
+  if(kind==='check'){el.checked=!!S[key];el.addEventListener('change',function(){S[key]=el.checked;save();sync()})}
+  else if(kind==='num'){el.value=String(S[key]);el.addEventListener('input',function(){S[key]=Number(el.value);save();sync()})}
+  else{el.value=S[key];el.addEventListener('input',function(){S[key]=el.value;save();sync()})}
+}
+bind('mode','mode','str');bind('sens','sens','num');bind('lpm','lpm','num');bind('font','font','num');
+bind('marker','marker','num');bind('mirror','mirror','check');bind('rot','rot','num');bind('cd','cd','check');bind('clean','clean','check');
+scriptEl.value=S.script;
+var saveT=0;
+scriptEl.addEventListener('input',function(){S.script=scriptEl.value;clearTimeout(saveT);saveT=setTimeout(save,300);sync()});
+
+function sync(){
+  $('sensV').textContent=S.sens;
+  $('lpmV').textContent=S.lpm+' 行';
+  $('fontV').textContent=S.font+'px';
+  $('markerV').textContent=S.marker+'%';
+  $('rowSens').style.display=S.mode==='voice'?'flex':'none';
+  $('rowCd').style.display=S.mode==='voice'?'none':'flex';
+  $('modeHint').textContent=S.mode==='voice'?'开口说话就往下走，停下来就停。第一次要允许麦克风':'';
+  var n=scriptEl.value.replace(/\s/g,'').length;
+  $('count').textContent=n?('共 '+n+' 字'):'还没有稿子';
+  spdEl.textContent=S.lpm;
+  bCal.style.display=voiceOn()||(stageOn&&S.mode==='voice')?'':'none';
+  if(stageOn)layout(true);
+}
+
+/* ---------- 稿子清理与排版 ---------- */
+function cleanMd(t){
+  t=t.replace(/\r\n?/g,'\n');
+  t=t.replace(/^---\n[\s\S]*?\n---\n?/,'');
+  t=t.replace(/<!--[\s\S]*?-->/g,'');
+  t=t.replace(/^\s*([-*_]\s*){3,}$/gm,'');
+  t=t.replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/\[([^\]]*)\]\([^)]*\)/g,'$1');
+  t=t.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g,'$2').replace(/\[\[([^\]]*)\]\]/g,'$1');
+  t=t.replace(/^\s{0,3}#{1,6}\s+/gm,'').replace(/^\s*>\s?/gm,'').replace(/^\s*[-*+]\s+/gm,'');
+  t=t.replace(/\*\*|__|~~|`/g,'').replace(/(^|[^*])\*([^*\n]+)\*/g,'$1$2');
+  return t;
+}
+function build(){
+  var src=scriptEl.value.replace(/\r\n?/g,'\n');
+  if(S.clean)src=cleanMd(src);
+  text.innerHTML='';
+  var lines=src.split('\n'),prevEmpty=true,n=0;
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i].trim();
+    if(!l){if(!prevEmpty){var sp=document.createElement('p');sp.className='sp';text.appendChild(sp)}prevEmpty=true;continue}
+    var p=document.createElement('p');p.textContent=l;text.appendChild(p);prevEmpty=false;n++;
+  }
+  return n;
+}
+
+/* ---------- 引擎 ---------- */
+var stageOn=false,pos=0,maxPos=0,playing=false,gate=0,lastT=0,raf=0,lineH=96,markerY=0,cdTimer=null,hudT=0,toastT=0,lastPct=-1;
+
+function layout(keepRatio){
+  var W=window.innerWidth,H=window.innerHeight;
+  var ratio=(keepRatio&&maxPos>0)?pos/maxPos:null;
+  var w=W,h=H,tf='none';
+  if(S.rot===90){w=H;h=W;tf='translateX('+W+'px) rotate(90deg)'}
+  else if(S.rot===270){w=H;h=W;tf='translateY('+H+'px) rotate(-90deg)'}
+  rotEl.style.width=w+'px';rotEl.style.height=h+'px';rotEl.style.transform=tf;
+  lineH=S.font*1.6;
+  markerY=h*S.marker/100;
+  var padTop=Math.max(0,markerY-lineH/2);
+  text.style.fontSize=S.font+'px';
+  text.style.paddingTop=padTop+'px';
+  text.style.paddingBottom=h+'px';
+  flip.className=S.mirror?'m':'';
+  band.style.top=padTop+'px';band.style.height=lineH+'px';
+  fadeTop.style.height=padTop+'px';
+  var C=text.offsetHeight-padTop-h;
+  maxPos=Math.max(0,C-lineH);
+  if(ratio!==null)pos=ratio*maxPos;
+  pos=clamp(pos,0,maxPos);
+  updateMeterTick();
+  render();
+}
+function render(){
+  text.style.transform='translate3d(0,'+(-pos).toFixed(1)+'px,0)';
+  var p=maxPos>0?pos/maxPos:0;
+  prog.style.height=(p*100).toFixed(1)+'%';
+  var pc=Math.round(p*100);
+  if(pc!==lastPct){lastPct=pc;pctEl.textContent=pc+'%'}
+}
+function toast(msg,ms){
+  toastEl.textContent=msg;toastEl.classList.add('on');
+  clearTimeout(toastT);toastT=setTimeout(function(){toastEl.classList.remove('on')},ms||1800);
+}
+
+/* 播放控制 */
+function setPlayUI(){
+  var on=playing||!!cdTimer;
+  bPlay.textContent=on?'⏸ 暂停':'▶ 开始';
+  showHud();
+}
+function play(){
+  if(playing||cdTimer)return;
+  if(S.cd&&!voiceOn()&&pos<=1){
+    var n=3;cdEl.textContent=n;cdEl.style.display='flex';
+    cdTimer=setInterval(function(){
+      n--;
+      if(n<=0){clearInterval(cdTimer);cdTimer=null;cdEl.style.display='none';playing=true;setPlayUI()}
+      else cdEl.textContent=n;
+    },1000);
+    setPlayUI();return;
+  }
+  playing=true;setPlayUI();
+}
+function pause(){
+  playing=false;
+  if(cdTimer){clearInterval(cdTimer);cdTimer=null;cdEl.style.display='none'}
+  setPlayUI();
+}
+function toggle(){(playing||cdTimer)?pause():play()}
+function restart(){pause();pos=0;render()}
+function jump(n){pos=clamp(pos+n*lineH,0,maxPos);render()}
+function setLpm(v){S.lpm=clamp(Math.round(v),4,60);$('lpm').value=String(S.lpm);save();spdEl.textContent=S.lpm;$('lpmV').textContent=S.lpm+' 行';showHud()}
+function setFont(v){S.font=clamp(Math.round(v),28,140);$('font').value=String(S.font);save();$('fontV').textContent=S.font+'px';layout(true);showHud()}
+
+/* 控制条显隐 */
+function showHud(){
+  hud.classList.remove('off');
+  clearTimeout(hudT);
+  if(playing)hudT=setTimeout(function(){hud.classList.add('off')},3500);
+}
+function toggleHud(){
+  if(hud.classList.contains('off'))showHud();
+  else{hud.classList.add('off');clearTimeout(hudT)}
+}
+
+/* ---------- 声控 ---------- */
+var ctx=null,analyser=null,stream=null,buf=null,micOK=false,calibrating=false,calStart=0,calSamples=[],noise=0.004,lvl=0,speaking=false,lastVoice=0,HOLD=700;
+function voiceOn(){return S.mode==='voice'&&micOK}
+function thr(){return Math.max(0.01,noise*(3.2-(S.sens-1)*0.2)+0.004)}
+function updateMeterTick(){meterTick.style.left='25%'}
+function startCalib(){calibrating=true;calStart=performance.now();calSamples=[];toast('校准环境音…先别说话',1500)}
+function prepCtx(){
+  try{
+    var AC=window.AudioContext||window.webkitAudioContext;
+    ctx=new AC();
+    if(ctx.resume)ctx.resume();
+  }catch(e){ctx=null}
+}
+function startMic(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!ctx){
+    toast('这个页面打不开麦克风（地址要是 https），先用手动',4500);return;
+  }
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(s){
+    if(!stageOn){s.getTracks().forEach(function(t){t.stop()});return}
+    stream=s;
+    if(ctx.resume)ctx.resume();
+    var src=ctx.createMediaStreamSource(s);
+    analyser=ctx.createAnalyser();analyser.fftSize=1024;
+    var g=ctx.createGain();g.gain.value=0;
+    src.connect(analyser);analyser.connect(g);g.connect(ctx.destination);
+    buf=new Uint8Array(analyser.fftSize);
+    micOK=true;meterEl.style.display='block';
+    bCal.style.display='';
+    startCalib();
+  }).catch(function(e){
+    toast('麦克风没打开（'+(e&&e.name?e.name:'未知')+'）。去 设置→Safari→麦克风 允许；现在先当手动用',5500);
+  });
+}
+function stopMic(){
+  micOK=false;analyser=null;speaking=false;calibrating=false;
+  if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
+  if(ctx){try{ctx.close()}catch(e){}ctx=null}
+  meterEl.style.display='none';
+}
+function analyse(now){
+  analyser.getByteTimeDomainData(buf);
+  var sum=0,i,v;
+  for(i=0;i<buf.length;i++){v=(buf[i]-128)/128;sum+=v*v}
+  var rms=Math.sqrt(sum/buf.length);
+  lvl=lvl*0.6+rms*0.4;
+  if(calibrating){
+    calSamples.push(rms);
+    if(now-calStart>1300){
+      calSamples.sort(function(a,b){return a-b});
+      noise=calSamples[Math.floor(calSamples.length*0.9)]||0.004;
+      calibrating=false;toast('好了，开口就会走',1600);
+    }
+  }else{
+    if(lvl>thr())lastVoice=now;
+    speaking=(now-lastVoice)<HOLD;
+  }
+  meterFill.style.width=clamp(lvl/(thr()*4)*100,0,100)+'%';
+  if(speaking&&!calibrating)meterEl.classList.add('talk');else meterEl.classList.remove('talk');
+}
+
+/* ---------- 主循环 ---------- */
+function frame(t){
+  raf=requestAnimationFrame(frame);
+  var dt=lastT?Math.min(0.1,(t-lastT)/1000):0;lastT=t;
+  if(analyser)analyse(t);
+  var target=1;
+  if(voiceOn())target=(speaking&&!calibrating)?1:0;
+  gate+=(target-gate)*Math.min(1,dt/0.2);
+  if(Math.abs(target-gate)<0.01)gate=target;
+  if(playing){
+    pos+=S.lpm/60*lineH*dt*(voiceOn()?gate:1);
+    if(pos>=maxPos){pos=maxPos;playing=false;setPlayUI();toast('到底了',2200)}
+  }
+  render();
+}
+
+/* ---------- 防熄屏 ---------- */
+var wl=null;
+function keepAwake(on){
+  try{
+    if(on){
+      if(navigator.wakeLock&&navigator.wakeLock.request){navigator.wakeLock.request('screen').then(function(l){wl=l}).catch(function(){})}
+      var pr=nosleep.play();if(pr&&pr.catch)pr.catch(function(){});
+    }else{
+      if(wl){wl.release();wl=null}
+      nosleep.pause();
+    }
+  }catch(e){}
+}
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&stageOn)keepAwake(true)});
+
+/* ---------- 进入 / 退出 ---------- */
+function startStage(){
+  var n=build();
+  if(!n){alert('先把稿子粘进来');return}
+  stageOn=true;
+  setup.hidden=true;stage.hidden=false;
+  document.body.style.overflow='hidden';
+  window.scrollTo(0,0);
+  pos=0;playing=false;gate=0;lastT=0;lastPct=-1;speaking=false;lastVoice=0;
+  keepAwake(true);
+  micOK=false;meterEl.style.display='none';
+  bCal.style.display=S.mode==='voice'?'':'none';
+  if(S.mode==='voice'){prepCtx();startMic()}
+  layout(false);
+  setPlayUI();
+  raf=requestAnimationFrame(frame);
+  setTimeout(function(){if(stageOn)layout(true)},350);
+}
+function exitStage(){
+  pause();
+  cancelAnimationFrame(raf);
+  stopMic();
+  keepAwake(false);
+  stageOn=false;
+  stage.hidden=true;setup.hidden=false;
+  document.body.style.overflow='';
+}
+
+/* ---------- 事件 ---------- */
+$('go').addEventListener('click',startStage);
+$('bExit').addEventListener('click',exitStage);
+$('bRestart').addEventListener('click',restart);
+$('bPlay').addEventListener('click',toggle);
+$('bSlow').addEventListener('click',function(){setLpm(S.lpm-2)});
+$('bFast').addEventListener('click',function(){setLpm(S.lpm+2)});
+$('bSmall').addEventListener('click',function(){setFont(S.font-6)});
+$('bBig').addEventListener('click',function(){setFont(S.font+6)});
+$('bCal').addEventListener('click',function(){if(micOK)startCalib();else toast('麦克风没开，没法校准',1800)});
+
+var drag=null;
+vp.addEventListener('pointerdown',function(e){
+  drag={x:e.clientX,y:e.clientY,moved:false,tot:0};
+  try{vp.setPointerCapture(e.pointerId)}catch(_){}
+});
+vp.addEventListener('pointermove',function(e){
+  if(!drag)return;
+  var dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  drag.x=e.clientX;drag.y=e.clientY;
+  drag.tot+=Math.abs(dx)+Math.abs(dy);
+  if(drag.tot>10)drag.moved=true;
+  if(drag.moved){
+    var d=S.rot===90?-dx:(S.rot===270?dx:dy);
+    pos=clamp(pos-d,0,maxPos);render();
+  }
+});
+vp.addEventListener('pointerup',function(){if(drag&&!drag.moved)toggleHud();drag=null});
+vp.addEventListener('pointercancel',function(){drag=null});
+stage.addEventListener('wheel',function(e){pos=clamp(pos+e.deltaY,0,maxPos);render()},{passive:true});
+
+document.addEventListener('keydown',function(e){
+  if(!stageOn)return;
+  var key=e.key;
+  if(key===' '||key==='Enter'){toggle();e.preventDefault()}
+  else if(key==='ArrowUp'){setLpm(S.lpm+2);e.preventDefault()}
+  else if(key==='ArrowDown'){setLpm(S.lpm-2);e.preventDefault()}
+  else if(key==='ArrowRight'||key==='PageDown'){jump(3);e.preventDefault()}
+  else if(key==='ArrowLeft'||key==='PageUp'){jump(-3);e.preventDefault()}
+  else if(key==='Home'){restart();e.preventDefault()}
+  else if(key==='Escape'){exitStage()}
+});
+window.addEventListener('resize',function(){if(stageOn){layout(true);setTimeout(function(){layout(true)},300)}});
+window.addEventListener('orientationchange',function(){if(stageOn)setTimeout(function(){layout(true)},350)});
+
+sync();
+})();
+</script>
+</body>
+</html>
