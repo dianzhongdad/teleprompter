@@ -51,6 +51,7 @@ input[type=checkbox]{width:22px;height:22px}
 #meter{position:absolute;right:12px;top:10px;width:96px;height:8px;background:#2c2c2e;border-radius:4px;overflow:hidden;display:none}
 #meter i{display:block;height:100%;width:0;background:#8e8e93}
 #meter.talk i{background:#30d158}
+#mtxt{position:absolute;right:12px;top:22px;font-size:12px;color:#aeaeb2;display:none;font-variant-numeric:tabular-nums}
 #meter b{position:absolute;top:0;bottom:0;width:2px;background:#ffd54a}
 #hud{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center;padding:10px 12px;background:rgba(28,28,30,.94);transition:opacity .25s,transform .25s}
 #hud.off{opacity:0;pointer-events:none;transform:translateY(100%)}
@@ -138,6 +139,7 @@ input[type=checkbox]{width:22px;height:22px}
     <div id="cdbox"></div>
     <div id="toast"></div>
     <div id="meter"><i></i><b></b></div>
+    <div id="mtxt"></div>
     <div id="hud">
       <button class="b" id="bExit">✕ 退出</button>
       <button class="b" id="bRestart">⏮</button>
@@ -165,7 +167,7 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function clamp(v,a,b){return v<a?a:(v>b?b:v)}
 
 var setup=$('setup'),stage=$('stage'),rotEl=$('rotbox'),vp=$('vp'),flip=$('flip'),text=$('text'),band=$('band'),fadeTop=$('fadeTop'),
-    prog=$('prog').firstChild,cdEl=$('cdbox'),toastEl=$('toast'),meterEl=$('meter'),meterFill=meterEl.firstChild,meterTick=meterEl.lastChild,
+    prog=$('prog').firstChild,cdEl=$('cdbox'),toastEl=$('toast'),meterEl=$('meter'),mtxtEl=$('mtxt'),meterFill=meterEl.firstChild,meterTick=meterEl.lastChild,
     hud=$('hud'),bPlay=$('bPlay'),bCal=$('bCal'),pctEl=$('pct'),spdEl=$('spd'),nosleep=$('nosleep'),scriptEl=$('script');
 
 /* ---------- 设置页绑定 ---------- */
@@ -301,7 +303,7 @@ function toggleHud(){
 }
 
 /* ---------- 声控 ---------- */
-var ctx=null,analyser=null,stream=null,buf=null,micOK=false,calibrating=false,calStart=0,calSamples=[],noise=0.004,lvl=0,speaking=false,lastVoice=0,HOLD=700;
+var lastTxt=0,ctx=null,analyser=null,stream=null,buf=null,micOK=false,calibrating=false,calStart=0,calSamples=[],noise=0.004,lvl=0,speaking=false,lastVoice=0,HOLD=700;
 function voiceOn(){return S.mode==='voice'&&micOK}
 function thr(){return Math.max(0.01,noise*(3.2-(S.sens-1)*0.2)+0.004)}
 function updateMeterTick(){meterTick.style.left='25%'}
@@ -326,7 +328,7 @@ function startMic(){
     var g=ctx.createGain();g.gain.value=0;
     src.connect(analyser);analyser.connect(g);g.connect(ctx.destination);
     buf=new Uint8Array(analyser.fftSize);
-    micOK=true;meterEl.style.display='block';
+    micOK=true;meterEl.style.display='block';mtxtEl.style.display='block';
     bCal.style.display='';
     startCalib();
   }).catch(function(e){
@@ -337,7 +339,7 @@ function stopMic(){
   micOK=false;analyser=null;speaking=false;calibrating=false;
   if(stream){stream.getTracks().forEach(function(t){t.stop()});stream=null}
   if(ctx){try{ctx.close()}catch(e){}ctx=null}
-  meterEl.style.display='none';
+  meterEl.style.display='none';mtxtEl.style.display='none';
 }
 function analyse(now){
   analyser.getByteTimeDomainData(buf);
@@ -350,13 +352,16 @@ function analyse(now){
     if(now-calStart>1300){
       calSamples.sort(function(a,b){return a-b});
       noise=calSamples[Math.floor(calSamples.length*0.9)]||0.004;
-      calibrating=false;toast('好了，开口就会走',1600);
+      calibrating=false;
+      if(S.mode==='voice'&&!playing&&!cdTimer){playing=true;setPlayUI()}
+      toast('听着呢，开口就走',1800);
     }
   }else{
     if(lvl>thr())lastVoice=now;
     speaking=(now-lastVoice)<HOLD;
   }
   meterFill.style.width=clamp(lvl/(thr()*4)*100,0,100)+'%';
+  if(now-lastTxt>150){lastTxt=now;mtxtEl.textContent='音量 '+Math.round(lvl*1000)+' / 门槛 '+Math.round(thr()*1000)+(calibrating?' 校准中':(speaking?' 听到':' 静音'))+(playing?' 走':' 停')}
   if(speaking&&!calibrating)meterEl.classList.add('talk');else meterEl.classList.remove('talk');
 }
 
