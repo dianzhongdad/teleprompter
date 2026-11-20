@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>语音识别测试</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:#000;color:#fff;font-family:-apple-system,"PingFang SC",sans-serif;-webkit-text-size-adjust:100%}
+h1{font-size:20px;margin:0 0 10px}
+.card{background:#1c1c1e;border-radius:12px;padding:12px;margin-bottom:12px;font-size:14px;line-height:1.6}
+.k{color:#8e8e93}
+button{width:100%;height:56px;border:0;border-radius:14px;background:#ffd54a;color:#000;font-size:19px;font-weight:700}
+button.stop{background:#ff453a;color:#fff}
+#tx{font-size:22px;line-height:1.6;min-height:120px;word-break:break-all}
+#tx .i{color:#8e8e93}
+#log{font-size:12px;color:#aeaeb2;max-height:200px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace}
+.ok{color:#30d158}.bad{color:#ff453a}
+</style>
+</head>
+<body>
+<h1>语音识别测试</h1>
+
+<div class="card" id="env"></div>
+<button id="btn">开始听</button>
+
+<div class="card" style="margin-top:12px">
+  <div class="k">识别出来的字（白色=确定，灰色=还在猜）</div>
+  <div id="tx"></div>
+</div>
+
+<div class="card">
+  <div>收到结果 <b id="nRes">0</b> 次 ｜ 自动重启 <b id="nRst">0</b> 次 ｜ 首字延迟 <b id="lat">-</b></div>
+</div>
+
+<div class="card">
+  <div class="k">过程记录（出问题时把这里截图发我）</div>
+  <div id="log"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var ua=navigator.userAgent;
+var m=ua.match(/OS (\d+)_(\d+)/);
+$('env').innerHTML='系统：'+(m?('iOS '+m[1]+'.'+m[2]):'非 iOS')+'<br>语音识别接口：'+(SR?'<span class="ok">有</span>':'<span class="bad">没有</span>')+'<br>是否 https：'+(location.protocol==='https:'?'<span class="ok">是</span>':'<span class="bad">否</span>');
+var t0=Date.now();
+function log(s){
+  var el=$('log');
+  el.textContent+=((Date.now()-t0)/1000).toFixed(1)+'s  '+s+'\n';
+  el.scrollTop=el.scrollHeight;
+}
+if(!SR){log('这个浏览器没有语音识别接口');$('btn').disabled=true;return}
+
+var rec=null,running=false,done='',nRes=0,nRst=0,startedAt=0,gotFirst=false;
+function render(interim){
+  $('tx').innerHTML=done+'<span class="i">'+interim+'</span>';
+  $('nRes').textContent=nRes;$('nRst').textContent=nRst;
+}
+function create(){
+  rec=new SR();
+  rec.lang='zh-CN';
+  rec.continuous=true;
+  rec.interimResults=true;
+  rec.onstart=function(){log('onstart 识别已启动')};
+  rec.onaudiostart=function(){log('onaudiostart 麦克风已接通')};
+  rec.onspeechstart=function(){log('onspeechstart 听到有人说话')};
+  rec.onresult=function(e){
+    nRes++;
+    if(!gotFirst){gotFirst=true;$('lat').textContent=((Date.now()-startedAt)/1000).toFixed(1)+' 秒'}
+    var fin='',interim='';
+    for(var i=0;i<e.results.length;i++){
+      var r=e.results[i];
+      if(r.isFinal)fin+=r[0].transcript;else interim+=r[0].transcript;
+    }
+    render(interim);
+    $('tx').innerHTML=done+fin+'<span class="i">'+interim+'</span>';
+    rec._cur=fin;
+  };
+  rec.onerror=function(e){log('错误：'+e.error+(e.message?(' '+e.message):''));
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){running=false;$('btn').textContent='开始听';$('btn').className='';log('被拒绝：到 设置→Safari→麦克风 允许；并确认 设置→通用→键盘→启用听写 已打开')}
+  };
+  rec.onend=function(){
+    log('onend 识别结束');
+    if(rec&&rec._cur)done+=rec._cur;
+    if(running){nRst++;log('自动重启 #'+nRst);setTimeout(function(){if(!running)return;create();try{rec.start()}catch(err){log('重启失败：'+err.message)}},250)}
+  };
+}
+$('btn').addEventListener('click',function(){
+  if(running){running=false;try{rec.stop()}catch(_){}$('btn').textContent='开始听';$('btn').className='';return}
+  running=true;done='';nRes=0;nRst=0;gotFirst=false;startedAt=Date.now();$('lat').textContent='-';$('tx').textContent='';
+  create();
+  try{rec.start();$('btn').textContent='停止';$('btn').className='stop';log('调用 start()')}catch(err){log('start 失败：'+err.message);running=false}
+});
+})();
+</script>
+</body>
+</html>
